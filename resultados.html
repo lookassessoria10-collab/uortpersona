@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c1d3e">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Painel de respostas · Maia · UORT</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/resultados.css">
+</head>
+<body class="dash-page">
+  <header class="d-head">
+    <div class="d-head-in">
+      <img src="assets/brand/uort-white.png" alt="UORT · Ortopedia e Traumatologia" class="d-logo">
+      <span class="d-sep" aria-hidden="true"></span>
+      <div class="d-title"><b>Painel de respostas</b><span>Maia · personagem da UORT</span></div>
+      <div class="d-tools" id="tools" hidden>
+        <label class="d-select"><span class="sr-only">Rodada</span><select id="session"></select></label>
+        <label class="d-auto"><input type="checkbox" id="auto"><span>Atualizar sozinho</span></label>
+        <button class="d-btn" id="reload" title="Atualizar agora"><svg class="ic"><use href="#i-refresh"/></svg><span>Atualizar</span></button>
+      </div>
+    </div>
+  </header>
+
+  <main class="d-main" id="main">
+    <section class="d-gate" id="gate" hidden>
+      <h1>Acesso restrito</h1>
+      <p>Digite a senha da equipe (a variável <code>PRESENTER_KEY</code> configurada na Vercel) para ver as respostas.</p>
+      <form id="gate-form" class="d-gate-form">
+        <input type="password" id="gate-key" autocomplete="off" placeholder="Senha da equipe" aria-label="Senha da equipe" required>
+        <button class="d-btn primary" type="submit">Entrar</button>
+      </form>
+      <p class="d-err" id="gate-err" role="alert"></p>
+    </section>
+
+    <div id="dash" hidden>
+      <div class="d-bar">
+        <div class="d-seg" role="group" aria-label="Filtrar por perfil" id="roles"></div>
+        <div class="d-actions">
+          <button class="d-btn" id="csv-rows"><svg class="ic"><use href="#i-download"/></svg>Respostas (CSV)</button>
+          <button class="d-btn" id="csv-sum"><svg class="ic"><use href="#i-download"/></svg>Resumo (CSV)</button>
+        </div>
+      </div>
+      <p class="d-warn" id="warn" hidden></p>
+      <section class="d-kpis" id="kpis" aria-label="Indicadores"></section>
+      <section class="d-grid" id="charts" aria-label="Resultados por pergunta"></section>
+
+      <section class="d-table-wrap" aria-labelledby="tb-title">
+        <div class="d-table-head">
+          <h2 id="tb-title">Respostas individuais</h2>
+          <input type="search" id="search" placeholder="Buscar por nome, pergunta ou resposta" aria-label="Buscar nas respostas">
+        </div>
+        <div class="d-table-scroll"><table class="d-table" id="table"></table></div>
+        <button class="d-btn" id="more" hidden>Mostrar mais</button>
+      </section>
+
+      <section class="d-danger">
+        <div><b>Apagar respostas da rodada</b><span>Use para limpar respostas de teste antes de enviar o link. Não pode ser desfeito.</span></div>
+        <button class="d-btn danger" id="clear"><svg class="ic"><use href="#i-trash"/></svg>Apagar rodada</button>
+      </section>
+    </div>
+  </main>
+
+  <div class="d-tip" id="tip" role="tooltip" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/resultados.js"></script>
+</body>
+</html>

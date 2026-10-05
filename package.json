@@ -1,0 +1,13 @@
+{
+  "name": "uort-maia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Apresentação interativa da personagem MAIA para a UORT, com votação pelo celular e painel de respostas.",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev-server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
