@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MAIA · UORT — painel de respostas
+   PERSONAGENS · UORT — painel de respostas
    Superfície clara para leitura de dados; uma série por gráfico (teal).
    ========================================================================== */
 .dash-page { --surface: #ffffff; --page: #f2f8f9; --grid: #e3eef0; --ink-t: #0c1d3e; --ink-2: #3c5163; --ink-3: #6b7f8c; --bar: #14a7b2; --bar-top: #0b6f78;
@@ -33,10 +33,7 @@
 .d-gate-form .d-btn { height: 44px; }
 .d-err { margin-top: 12px; color: #b2401a; font-size: 14px; min-height: 1em; }
 
-.d-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-.d-seg { display: inline-flex; flex-wrap: wrap; padding: 4px; border-radius: 12px; background: #e3eff1; }
-.d-seg button { height: 36px; padding: 0 14px; border-radius: 9px; font: 700 13px/1 var(--font-head); color: var(--ink-3); }
-.d-seg button[aria-pressed="true"] { background: #fff; color: var(--ink-t); box-shadow: 0 4px 12px -6px rgba(12, 29, 62, .35); }
+.d-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }
 .d-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .d-warn { margin-top: 16px; padding: 12px 16px; border-radius: 12px; background: #fff6e8; border: 1px solid #f3d7a6; color: #7a4b05; font-size: 14px; }
 
@@ -73,16 +70,6 @@
 .tag.win { background: #e1f6f7; color: var(--bar-top); }
 .empty { margin-top: 14px; padding: 18px; border-radius: 12px; background: #f6fafb; color: var(--ink-3); font-size: 14px; text-align: center; }
 
-.pairs { margin-top: 16px; display: grid; gap: 16px; }
-.pair-k { font: 700 11px/1 var(--font-head); letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3); }
-.pair-bar { margin-top: 8px; display: flex; gap: 2px; height: 18px; }
-.pair-bar span { display: block; height: 100%; transition: width .8s var(--ease-out); }
-.pair-bar .pa { background: var(--bar); border-radius: 4px 0 0 4px; }
-.pair-bar .pb { background: #0c1d3e; border-radius: 0 4px 4px 0; }
-.pair-l { margin-top: 6px; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ink-3); }
-.pair-l span:last-child { text-align: right; }
-.pair-l .win { color: var(--ink-t); font-weight: 600; }
-.pair-l b { font: 700 13px/1 var(--font-head); color: var(--ink-t); font-variant-numeric: tabular-nums; }
 
 .d-table-wrap { margin-top: 24px; padding: 20px 22px; border-radius: 18px; background: var(--surface); border: 1px solid var(--grid); }
 .d-table-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }

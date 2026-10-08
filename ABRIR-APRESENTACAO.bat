@@ -9,6 +9,6 @@ if errorlevel 1 (
   pause
   exit /b
 )
-start "MAIA - servidor local" node dev-server.mjs
+start "UORT - servidor local" node dev-server.mjs
 timeout /t 1 >nul
 start "" http://localhost:5173

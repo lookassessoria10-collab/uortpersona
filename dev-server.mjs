@@ -47,7 +47,7 @@ createServer(async (req, res) => {
   }
   serveStatic(pathname, res);
 }).listen(PORT, () => {
-  console.log(`\n  MAIA · UORT rodando em http://localhost:${PORT}`);
+  console.log(`\n  Personagens · UORT rodando em http://localhost:${PORT}`);
   console.log(`  Painel de respostas:  http://localhost:${PORT}/resultados`);
   console.log(`  Senha do painel (local): ${process.env.PRESENTER_KEY}\n`);
 });

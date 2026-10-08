@@ -1,16 +1,22 @@
 /* ==========================================================================
-   MAIA · UORT — motor da apresentação + questionário
+   PERSONAGENS · UORT — motor da apresentação + questionário
    Cada pessoa abre o link, percorre as lâminas e responde ali mesmo.
    As respostas são salvas automaticamente (/api/vote); o resultado só
    aparece no painel da equipe (/resultados).
    No computador: palco 16:9 escalado. No celular/tablet em pé: layout
    vertical que rola (classe .fluid no <html>).
    ========================================================================== */
-import { QUESTIONS, SETTINGS, ROLES, byId, normalize, answerLabel } from './config.js';
+import { QUESTIONS, SETTINGS, byId, normalize, answerLabel } from './config.js';
 import { injectIcons, icon } from './icons.js';
 import { api, LS, participantId, flushQueue } from './client.js';
 
 injectIcons();
+
+// questionário novo: aparelhos que abriram a versão anterior começam do zero
+if (LS.get('maia-v', 1) !== SETTINGS.version) {
+  ['maia-local', 'maia-me', 'maia-sent', 'maia-pos', 'maia-queue'].forEach(LS.del);
+  LS.set('maia-v', SETTINGS.version);
+}
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -27,7 +33,7 @@ const reduced = staticMode || matchMedia('(prefers-reduced-motion: reduce)').mat
 
 const SESSION = cleanSession(params.get('sessao') || SETTINGS.defaultSession);
 const PID = participantId();
-const CHAPTERS = { chegada: 'Chegada', escolhas: 'Primeiras escolhas', revelacao: 'Revelação', visual: 'O visual', presenca: 'Presença', fechamento: 'Fechamento' };
+const CHAPTERS = { chegada: 'Chegada', dna: 'O DNA', revelacao: 'Revelação', ela: 'Ela', ele: 'Ele', presenca: 'Presença', fechamento: 'Fechamento' };
 
 const stage = $('#stage');
 const frame = $('#frame');
@@ -42,7 +48,7 @@ const state = {
   scale: 1,
   fluid: false,
   local: LS.get('maia-local', {}),                 // respostas desta pessoa
-  me: LS.get('maia-me', { name: '', role: '' }),   // perfil
+  me: LS.get('maia-me', { name: '' }),             // nome de quem responde
   sent: LS.get('maia-sent', {}),                   // o que já chegou ao servidor
   status: {},                                      // qid → saving | saved | queued | error
   returnTo: null,                                  // volta ao resumo depois de alterar
@@ -91,24 +97,25 @@ function warm(k) {
 const CHECK = `<span class="opt-check" aria-hidden="true">${icon('check')}</span>`;
 const lazy = 'loading="lazy" decoding="async"';
 
+// cartão de nome: letra do acróstico ou ícone + ideia por trás do nome
+const nameCards = q => q.options.map((o, k) => `
+    <button class="nm opt" data-v="${o.id}" aria-pressed="false">
+      <span class="nm-k">Opção ${'AB'[k]}</span>
+      <b class="nm-name">${o.label}</b>
+      <span class="nm-idea">${o.idea}</span>
+      <span class="nm-rows">${o.rows.map(([m, t, d]) => `
+        <span class="nm-row"><span class="nm-m${m.length > 1 ? ' is-ic' : ''}">${m.length > 1 ? icon(m) : m}</span><span class="nm-tx"><strong>${t}</strong><small>${d}</small></span></span>`).join('')}
+      </span>${CHECK}
+    </button>`).join('');
+
 const RENDER = {
-  papel: q => q.options.map((o, k) => `
-    <button class="role opt" data-v="${o.id}" aria-pressed="false">
-      <span class="role-n">${pad(k + 1)}</span>
-      <span class="role-ic">${icon(o.icon)}</span>
-      <span class="role-tx"><b class="role-t">${o.label}</b><span class="role-d">${o.desc}</span></span>${CHECK}
-    </button>`).join(''),
-  tom: q => q.options.map(o => `
-    <button class="tone opt" data-v="${o.id}" aria-pressed="false">
-      <span class="tone-k">${o.label}</span>
-      <span class="tone-msg"><span class="tone-av"><img src="assets/maia/det-cabelo.webp" alt="" ${lazy}></span><span class="tone-bubble">${o.sample}</span></span>
-      <span class="tone-d">${o.desc}</span>${CHECK}
-    </button>`).join(''),
   dna: q => q.options.map(o => `
     <button class="trait opt" data-v="${o.id}" aria-pressed="false"><span class="tr-mark">${icon('plus')}</span>${o.label}</button>`).join(''),
+  'nome-ela': nameCards,
+  'nome-ele': nameCards,
   versao: q => q.options.map(o => `
     <button class="ver opt" data-v="${o.id}" aria-pressed="false">
-      <img src="${o.img}" alt="" style="--pos:${o.pos || '50% 20%'}" ${lazy}><span class="ver-shade"></span>
+      <span class="ver-imgs"><img src="${o.img}" alt="" style="--pos:${o.pos || '50% 20%'}" ${lazy}><img src="${o.img2}" alt="" style="--pos:${o.pos2 || '50% 20%'}" ${lazy}></span><span class="ver-shade"></span>
       <span class="ver-txt"><b>${o.label}</b><span>${o.desc}</span></span>${CHECK}
     </button>`).join(''),
   cabelo: q => q.options.map(o => `
@@ -130,7 +137,6 @@ const RENDER = {
       <span class="fst-t">${o.label}</span>
       <span class="fst-stamp">Sua candidata<br>à estreia</span>${CHECK}
     </button>`).join(''),
-  estilo: () => '',
 };
 
 const qSlides = slides.filter(s => s.dataset.q);
@@ -142,7 +148,6 @@ qSlides.forEach(slide => {
 /* ---------- seleção ---------- */
 function paintSelection(slide) {
   const q = byId(slide.dataset.q);
-  if (q.type === 'pairs') { renderTT(slide); return; }
   const arr = valueArray(state.local[q.id]);
   $$('.opt', slide).forEach(b => {
     const k = arr.indexOf(b.dataset.v);
@@ -160,8 +165,8 @@ function feedback(slide, animate) {
   const q = byId(slide.dataset.q);
   const fb = $('[data-feedback]', slide);
   if (!fb) return;
-  const n = q.type === 'pairs' ? (answered(q.id) ? 1 : 0) : valueArray(state.local[q.id]).length;
-  const show = q.type === 'multi' && q.id === 'dna' ? n >= q.max : n > 0;
+  const n = valueArray(state.local[q.id]).length;
+  const show = q.id === 'dna' ? n >= q.max : n > 0;
   if (animate && show) { fb.classList.remove('show'); void fb.offsetWidth; }
   fb.classList.toggle('show', show);
 }
@@ -195,58 +200,6 @@ stage.addEventListener('click', e => {
   const slide = opt.closest('.slide');
   if (slide?.dataset.q) choose(slide, opt.dataset.v);
 });
-
-/* ---------- esta ou aquela (um par por vez) ---------- */
-const tt = { cur: 0, timer: null };
-function ttValue() {
-  const q = byId('estilo');
-  const v = state.local.estilo;
-  return Array.isArray(v) && v.length === q.pairs.length ? v.slice() : q.pairs.map(() => null);
-}
-function renderTT(slide, animate) {
-  const q = byId('estilo');
-  const v = ttValue();
-  const p = q.pairs[tt.cur];
-  const box = $('[data-opts]', slide);
-  box.innerHTML = `
-    <div class="tt-top"><span class="tt-count">Par <b>${tt.cur + 1}</b> de ${q.pairs.length}</span>
-      <span class="tt-dots">${q.pairs.map((_, k) => `<i class="${k === tt.cur ? 'cur' : v[k] ? 'done' : ''}"></i>`).join('')}</span></div>
-    <div class="tt-pair${animate ? ' enter' : ''}" data-pair="${tt.cur}">
-      ${['a', 'b'].map((side, k) => `${k ? '<span class="tt-or" aria-hidden="true">ou</span>' : ''}
-        <button class="tt-opt tt-${side}${v[tt.cur] === side ? ' is-sel' : ''}" data-side="${side}" aria-pressed="${v[tt.cur] === side}">
-          <span class="tt-l">${side.toUpperCase()}</span><b>${p[side].label}</b></button>`).join('')}
-    </div>
-    <ol class="tt-done" aria-label="Suas escolhas">${q.pairs.map((pp, k) => `
-      <li><button class="${k === tt.cur ? 'cur' : ''}${v[k] ? ' ok' : ''}" data-goto="${k}"><small>${pp.short}</small>${v[k] ? pp[v[k]].label : '…'}</button></li>`).join('')}</ol>`;
-}
-(function setupTT() {
-  const slide = $('.slide[data-id="estilo"]');
-  const v = ttValue();
-  tt.cur = Math.max(0, v.findIndex(s => !s));
-  if (v.every(Boolean)) tt.cur = 0;
-  renderTT(slide);
-  $('[data-opts]', slide).addEventListener('click', e => {
-    const opt = e.target.closest('[data-side]'), go = e.target.closest('[data-goto]');
-    if (go) { tt.cur = Number(go.dataset.goto); renderTT(slide, true); return; }
-    if (!opt) return;
-    const q = byId('estilo');
-    const val = ttValue();
-    val[tt.cur] = opt.dataset.side;
-    state.local.estilo = val;
-    saveLocal();
-    if (navigator.vibrate && state.fluid) navigator.vibrate(12);
-    renderTT(slide);
-    $(`.tt-opt[data-side="${opt.dataset.side}"]`, slide)?.classList.add('pop');
-    const nextOpen = val.findIndex((s, k) => !s && k !== tt.cur);
-    clearTimeout(tt.timer);
-    if (nextOpen >= 0) {
-      tt.timer = setTimeout(() => { tt.cur = nextOpen; renderTT(slide, true); }, reduced ? 0 : 480);
-    } else {
-      feedback(slide, true);
-      save(q.id);
-    }
-  });
-})();
 
 /* ---------- hélice do DNA ---------- */
 function helixSVG() {
@@ -300,7 +253,7 @@ function save(qid, force) {
   state.status[qid] = 'saving';
   updateNav();
   saveTimers[qid] = setTimeout(async () => {
-    const r = await api.vote({ session: SESSION, pid: PID, qid, value, name: state.me.name || '', role: state.me.role || '' });
+    const r = await api.vote({ session: SESSION, pid: PID, qid, value, name: state.me.name || '' });
     if (r.ok) {
       if (value === null) delete state.sent[sentKey(qid)];
       else state.sent[sentKey(qid)] = JSON.stringify(value);
@@ -311,65 +264,55 @@ function save(qid, force) {
     if (slides[state.i]?.dataset.id === 'recap') renderRecap(slides[state.i]);
   }, 450);
 }
-// perfil mudou: reenvia as respostas já dadas com o perfil atualizado
+// nome mudou: reenvia as respostas já dadas com o nome atualizado
 function resendAll() { QUESTIONS.forEach(q => { if (answered(q.id)) save(q.id, true); }); }
 
 /* ======================================================================
-   LÂMINA 03 · PERFIL
+   LÂMINA 03 · NOME DE QUEM RESPONDE
    ====================================================================== */
-const ROLE_ICON = { socio: 'star', colaborador: 'users', outro: 'user' };
-const profileSlide = $('.slide[data-id="perfil"]');
-function paintProfile() {
-  $('[data-roles]', profileSlide).innerHTML = ROLES.map(r => `
-    <button class="pf-role${state.me.role === r.id ? ' is-sel' : ''}" data-role="${r.id}" aria-pressed="${state.me.role === r.id}">${icon(ROLE_ICON[r.id] || 'user')}<span>${r.label}</span></button>`).join('');
-}
-paintProfile();
-$('#pf-name').value = state.me.name || '';
-$('[data-roles]', profileSlide).addEventListener('click', e => {
-  const b = e.target.closest('[data-role]');
-  if (!b) return;
-  state.me.role = b.dataset.role;
-  LS.set('maia-me', state.me);
-  paintProfile();
-  updateNav();
-  resendAll();
-});
+const nameInput = $('#pf-name');
+nameInput.value = state.me.name || '';
 let nameTimer;
-$('#pf-name').addEventListener('input', e => {
+nameInput.addEventListener('input', e => {
   state.me.name = e.target.value.trim().slice(0, 60);
   LS.set('maia-me', state.me);
+  updateNav();
   clearTimeout(nameTimer);
   nameTimer = setTimeout(resendAll, 1200);
 });
-$('#pf-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); next(); } });
+nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); next(); } });
 
 /* ======================================================================
-   LÂMINA 08 · RESUMO ANTES DA REVELAÇÃO
+   LÂMINA 05 · RESUMO ANTES DA REVELAÇÃO
    ====================================================================== */
 function renderPauseRecap(slide) {
-  $('[data-recap-pre]', slide).innerHTML = ['papel', 'tom', 'dna'].map(id => {
-    const q = byId(id), has = answered(id);
-    return `<span class="pr-chip${has ? '' : ' empty'}"><small>${q.short}</small><b>${has ? esc(answerLabel(q, state.local[id])) : 'a definir'}</b></span>`;
+  const q = byId('dna'), arr = valueArray(state.local.dna);
+  $('[data-recap-pre]', slide).innerHTML = Array.from({ length: q.max }, (_, k) => {
+    const o = q.options.find(x => x.id === arr[k]);
+    return `<span class="pr-chip${o ? '' : ' empty'}"><small>${pad(k + 1)}</small><b>${o ? esc(o.label) : 'a definir'}</b></span>`;
   }).join('');
 }
 
 /* ======================================================================
-   LÂMINA 10 · PONTOS DE DETALHE
+   LÂMINAS 07 E 10 · PONTOS DE DETALHE
    ====================================================================== */
 const HOTS = {
-  cabelo: ['det-cabelo', 'Cabelo crespo natural', 'Volume, textura e liberdade de penteado.'],
-  blazer: ['det-blazer', 'Blazer azul-marinho', 'Profissional, sem parecer formal demais.'],
-  punho: ['det-tecido', 'Punho teal', 'A paleta da UORT aparece nos detalhes.'],
-  tenis: ['det-tenis', 'Tênis branco', 'Conforto para quem vive em movimento.'],
+  cabelo: ['maia/det-cabelo', 'Cabelo crespo natural', 'Volume, textura e liberdade de penteado.'],
+  blazer: ['maia/det-blazer', 'Blazer azul-marinho', 'Profissional, sem parecer formal demais.'],
+  punho: ['maia/det-tecido', 'Punho teal', 'A paleta da UORT aparece nos detalhes.'],
+  tenis: ['maia/det-tenis', 'Tênis branco', 'Conforto para quem vive em movimento.'],
+  barba: ['otto/det-cabelo', 'Barba e cabelo', 'Naturais e bem cuidados.'],
+  jaqueta: ['otto/det-tecido', 'Jaqueta esportiva', 'Tecido leve, com detalhes em teal.'],
+  relogio: ['otto/det-relogio', 'Smartwatch', 'Tecnologia no dia a dia.'],
+  'tenis-ele': ['otto/det-tenis', 'Tênis esportivo', 'Conforto para quem vive em movimento.'],
 };
-(function setupHotspots() {
-  const slide = $('.slide[data-id="quem"]');
+$$('.s-who').forEach(function setupHotspots(slide) {
   const figs = $('.who-figs', slide);
   const card = $('[data-hotcard]', slide);
   let pinned = null;
   function show(btn) {
     const [img, title, text] = HOTS[btn.dataset.hot];
-    $('img', card).src = `assets/maia/${img}.webp`;
+    $('img', card).src = `assets/${img}.webp`;
     $('b', card).textContent = title;
     $('small', card).textContent = text;
     card.hidden = false;
@@ -390,49 +333,34 @@ const HOTS = {
     btn.addEventListener('click', () => { pinned = pinned === btn ? null : btn; if (pinned) show(btn); else hide(); });
   });
   slide._reset = () => { pinned = null; hide(); };
-})();
-
-/* ======================================================================
-   LÂMINA 13 · IMAGEM AMPLIADA
-   ====================================================================== */
-$$('.s-sit .b:not(.ph)').forEach(fig => {
-  fig.tabIndex = 0;
-  fig.setAttribute('role', 'button');
-  const open = () => {
-    const img = $('img', fig);
-    $('#lb-img').src = img.src;
-    $('#lb-img').alt = img.alt;
-    $('#lb-cap').textContent = `${$('figcaption b', fig).textContent} · ${$('figcaption span', fig).textContent}`;
-    $('#lightbox').showModal();
-  };
-  fig.addEventListener('click', open);
-  fig.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); open(); } });
 });
 
 /* ======================================================================
-   LÂMINA 16 · COMO VIRA CONTEÚDO
+   LÂMINA 15 · COMO VIRA CONTEÚDO
    ====================================================================== */
+// who: quem faz a pergunta no post (ela | ele)
 const THEMES = [
-  { q: 'Seu joelho reclama ao subir escadas?', img: 'post-escada', pos: '50% 16%', esp: 'Especialista em joelho', cta: 'Agende uma avaliação com um especialista em joelho.' },
-  { q: 'Dor no ombro depois do treino?', img: 'post-ombro', pos: '50% 30%', esp: 'Especialista em ombro', cta: 'Converse com um especialista em ombro da UORT.' },
-  { q: 'Quando procurar o Pronto Atendimento?', img: 'g-orienta', pos: '50% 25%', esp: 'Equipe do Pronto Atendimento', cta: 'Entenda quando ir ao Pronto Atendimento UORT.' },
-  { q: 'Caiu no fim de semana. E agora?', img: 'p-atenta', pos: '50% 30%', esp: 'Ortopedista da UORT', cta: 'Saiba quando uma queda pede avaliação.' },
-  { q: 'Onde dói?', img: 'g-conversa', pos: '50% 30%', esp: 'Especialistas UORT', cta: 'Descubra qual especialidade cuida de cada região do corpo.' },
-  { q: 'Conheça os especialistas da UORT.', img: 'p-proxima', pos: '50% 30%', esp: 'Corpo clínico UORT', cta: 'Conheça quem cuida de você em todas as fases do movimento.' },
+  { q: 'Seu joelho reclama ao subir escadas?', img: 'maia/sit-esporte', pos: '50% 18%', who: 'ela', esp: 'Especialista em joelho', cta: 'Agende uma avaliação com um especialista em joelho.' },
+  { q: 'Quando procurar o Pronto Atendimento?', img: 'otto/celular', pos: '50% 22%', who: 'ele', esp: 'Equipe do Pronto Atendimento', cta: 'Entenda quando ir ao Pronto Atendimento UORT.' },
+  { q: 'Dor no ombro depois do treino?', img: 'maia/post-ombro', pos: '50% 30%', who: 'ela', esp: 'Especialista em ombro', cta: 'Converse com um especialista em ombro da UORT.' },
+  { q: 'Caiu no fim de semana. E agora?', img: 'otto/p-atento', pos: '50% 30%', who: 'ele', esp: 'Ortopedista da UORT', cta: 'Saiba quando uma queda pede avaliação.' },
+  { q: 'Onde dói?', img: 'maia/p-comunicativa', pos: '45% 20%', who: 'ela', esp: 'Especialistas UORT', cta: 'Descubra qual especialidade cuida de cada região do corpo.' },
+  { q: 'Conheça os especialistas da UORT.', img: 'otto/retrato', pos: '50% 22%', who: 'ele', esp: 'Corpo clínico UORT', cta: 'Conheça quem cuida de você em todas as fases do movimento.' },
 ];
-const CT_STEPS = ['Maia pergunta', 'Especialista explica', 'Próximo passo'];
+const CT_STEPS = ['Personagem pergunta', 'Especialista explica', 'Próximo passo'];
+const who = t => (t.who === 'ele' ? 'Ele' : 'Ela');
 const ct = { slide: $('.slide[data-id="conteudo"]'), theme: 0, frame: 0, timer: null, pauseUntil: 0 };
 
 function phoneHTML(t) {
   return `<div class="ph-screen">
     <div class="ph-top"><span class="ph-av"><svg viewBox="0 0 64 64"><path d="M18 12v22a14 14 0 0 0 28 0V12" fill="none" stroke="#35e8f2" stroke-width="8"/></svg></span><span><b>uort</b><small>Ortopedia e Traumatologia</small></span></div>
     <div class="ph-post"><div class="ph-frames">
-      <div class="ph-frame pf-1"><img class="pf-bg" src="assets/maia/${t.img}.webp" alt="" style="--pos:${t.pos}"><span class="pf-tag">Maia pergunta</span><img class="pf-logo" src="assets/brand/uort-white.png" alt=""><p class="pf-q">${t.q}</p></div>
+      <div class="ph-frame pf-1"><img class="pf-bg" src="assets/${t.img}.webp" alt="" style="--pos:${t.pos}"><span class="pf-tag">${who(t)} pergunta</span><img class="pf-logo" src="assets/brand/uort-white.png" alt=""><p class="pf-q">${t.q}</p></div>
       <div class="ph-frame pf-2"><span class="pf-k">O especialista responde</span><span class="pf-ic">${icon('steth')}</span><p>Aqui entra a orientação de um especialista da UORT, com linguagem clara e responsável.</p><div class="pf-sign"><b>Dr(a). Nome Sobrenome</b><small>${t.esp} · CRM (inserir)</small></div></div>
       <div class="ph-frame pf-3"><span class="pf-k">Próximo passo</span><h4>${t.cta}</h4><span class="pf-btn">Agende sua avaliação<i>${icon('arrow-right')}</i></span><span class="pf-btn ghost">Fale com a UORT<i>${icon('whats')}</i></span><span class="logo-uort" role="img" aria-label="UORT"></span></div>
     </div></div>
     <div class="ph-bar">${icon('heart')}${icon('chat')}${icon('share')}<span class="ph-dots"><i></i><i></i><i></i></span></div>
-    <p class="ph-cap"><b>uort</b> A Maia apresenta a dúvida. Quem explica é o especialista.</p>
+    <p class="ph-cap"><b>uort</b> ${who(t)} apresenta a dúvida. Quem explica é o especialista.</p>
   </div>`;
 }
 function ctPaint(themeChanged) {
@@ -450,7 +378,7 @@ function ctPaint(themeChanged) {
 (function setupContent() {
   const s = ct.slide;
   $('[data-themes]', s).innerHTML = THEMES.map((t, k) => `
-    <button class="th" data-th="${k}" aria-pressed="false" data-anim="up" style="--d:${(.25 + k * .07).toFixed(2)}s"><img src="assets/maia/${t.img}.webp" alt="" style="--pos:${t.pos}" ${lazy}><span><b>${t.q}</b><small>${t.esp}</small></span></button>`).join('');
+    <button class="th" data-th="${k}" aria-pressed="false" data-anim="up" style="--d:${(.25 + k * .07).toFixed(2)}s"><img src="assets/${t.img}.webp" alt="" style="--pos:${t.pos}" ${lazy}><span><b>${t.q}</b><small>${t.esp}</small></span></button>`).join('');
   $('[data-ctsteps]', s).innerHTML = CT_STEPS.map((t, k) => `<button class="cs" data-cs="${k}" style="--dur:4.2s"><i>${k + 1}</i>${t}</button>`).join('');
   s.addEventListener('click', e => {
     const th = e.target.closest('[data-th]'), cs = e.target.closest('[data-cs]');
@@ -486,7 +414,7 @@ function ctStart() {
 function ctStop() { clearInterval(ct.timer); ct.timer = null; }
 
 /* ======================================================================
-   LÂMINA 18 · SUAS ESCOLHAS
+   LÂMINA 17 · SUAS ESCOLHAS
    ====================================================================== */
 function renderRecap(slide) {
   const done = QUESTIONS.filter(q => answered(q.id));
@@ -505,7 +433,8 @@ function renderRecap(slide) {
   $('[data-recap]', slide).innerHTML = QUESTIONS.map((q, k) => {
     const has = answered(q.id), v = state.local[q.id];
     const opt = q.type === 'single' && has ? q.options.find(o => o.id === v) : null;
-    const img = opt?.img ? `<img class="rc-img" src="${opt.img}" alt="" style="--pos:${opt.pos || '50% 22%'}" ${lazy}>` : '';
+    const img = opt?.img ? `<span class="rc-img">${[[opt.img, opt.pos], [opt.img2, opt.pos2]].filter(([src]) => src)
+      .map(([src, p]) => `<img src="${src}" alt="" style="--pos:${p || '50% 22%'}" ${lazy}>`).join('')}</span>` : '';
     return `<article class="rc${has ? '' : ' empty'}${img ? ' has-img' : ''}" style="--i:${k}">
       ${img}<p class="rc-k">${q.n} · ${q.short}</p>
       <p class="rc-v">${has ? esc(answerLabel(q, v)) : 'Ainda não respondida'}</p>
@@ -530,28 +459,16 @@ function setStep(s, instant) {
   s = Math.max(0, Math.min(maxStep(slide), s));
   const prev = state.step;
   if (s === prev && !instant) return;
-  const flip = !instant && !reduced && slide.dataset.id === 'revelacao' && prev === 0 && s === 1
-    ? $$('.maia-word span', slide).map(el => el.getBoundingClientRect()) : null;
   $$('[data-step]', slide).forEach(el => el.classList.toggle('is-on', Number(el.dataset.step) <= s));
   [...slide.classList].filter(c => c.startsWith('step-')).forEach(c => slide.classList.remove(c));
   slide.classList.add('step-' + s);
   state.step = s;
-  if (flip) {
-    // as letras do nome "viajam" até virar o acróstico M·A·I·A
-    $$('.acro-l', slide).forEach((el, k) => {
-      const a = flip[k], b = el.getBoundingClientRect(), sc = state.fluid ? 1 : state.scale || 1;
-      el.animate([
-        { transform: `translate(${(a.left - b.left) / sc}px, ${(a.top - b.top) / sc}px) scale(${a.height / b.height})` },
-        { transform: 'none' },
-      ], { duration: 1000, delay: k * 70, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'backwards' });
-    });
-  }
   // no celular, leva a tela até o que acabou de aparecer
   if (state.fluid && !instant && s > prev) {
     const el = $(`[data-step="${s}"]`, slide);
     if (el) setTimeout(() => (el.classList.contains('end-curtain') ? slide.scrollTo({ top: 0 }) : revealInSlide(slide, el)), 60);
   }
-  if (slide.dataset.id === 'quem' && s === 0) slide._reset?.();
+  if (slide.classList.contains('s-who') && s === 0) slide._reset?.();
 }
 
 /** Rola a lâmina (só na vertical) até o elemento ficar visível. */
@@ -571,8 +488,8 @@ function enter(slide) {
     case 'pausa': renderPauseRecap(slide); break;
     case 'recap': renderRecap(slide); break;
     case 'conteudo': ctStart(); break;
-    case 'quem': slide._reset?.(); break;
   }
+  slide._reset?.();
   if (slide.dataset.q) paintSelection(slide);
 }
 function leave(slide) {
@@ -624,10 +541,10 @@ function go(n, step = 0) {
 }
 function next() {
   const slide = slides[pos.i];
-  if (slide.dataset.id === 'perfil' && !state.me.role) {
-    const roles = $('[data-roles]', slide);
-    roles.classList.remove('shake'); void roles.offsetWidth; roles.classList.add('shake');
-    toast('Antes de continuar, conte como você participa da UORT.');
+  if (slide.dataset.id === 'perfil' && !state.me.name) {
+    nameInput.classList.remove('shake'); void nameInput.offsetWidth; nameInput.classList.add('shake');
+    if (!state.fluid) nameInput.focus();
+    toast('Antes de começar, digite o seu nome.');
     return;
   }
   if (pos.step < maxStep(slide)) { pos.step++; render(); return; }
@@ -681,7 +598,7 @@ function updateChrome() {
     if (slides[k].dataset.q) seg.classList.toggle('ans', answered(slides[k].dataset.q));
   });
   $$('[data-act="prev"]').forEach(b => { b.disabled = state.i === 0 && state.step === 0; });
-  document.title = state.i >= revealIndex ? 'Maia · UORT' : 'UORT · Uma nova integrante';
+  document.title = state.i >= revealIndex ? 'Personagens · UORT' : 'UORT · Novos integrantes';
   updateNav();
 }
 
@@ -693,7 +610,7 @@ function updateNav() {
   const last = state.i === slides.length - 1 && state.step >= maxStep(s);
   const btn = $('#btn-next'), label = $('#next-label'), info = $('#bb-save');
   let text = 'Próxima', ghost = false;
-  if (s.dataset.id === 'perfil') { text = state.me.role ? 'Começar' : 'Continuar'; ghost = !state.me.role; }
+  if (s.dataset.id === 'perfil') { text = state.me.name ? 'Começar' : 'Continuar'; ghost = !state.me.name; }
   else if (q) {
     if (!answered(q.id)) { text = 'Pular'; ghost = true; }
     else if (state.returnTo != null) text = 'Voltar ao resumo';
@@ -712,9 +629,6 @@ function updateNav() {
     else if (st === 'saved') { msg = `${icon('check')}Resposta salva`; cls = 'ok'; }
     else if (st === 'queued') { msg = 'Sem conexão: vamos reenviar'; cls = 'warn'; }
     else if (st === 'error') { msg = 'Não foi possível salvar'; cls = 'warn'; }
-  } else if (q && q.type === 'pairs') {
-    const n = ttValue().filter(Boolean).length;
-    if (n) { msg = `${n} de ${q.pairs.length}`; cls = 'wait'; }
   }
   info.className = 'bb-save ' + cls;
   info.innerHTML = msg;
@@ -797,7 +711,7 @@ addEventListener('keydown', e => {
 // deslizar para os lados troca de lâmina (rolar para cima/baixo continua rolando a lâmina)
 let swipe = null;
 frame.addEventListener('pointerdown', e => {
-  if (e.pointerType === 'mouse' || e.target.closest('input, a, [data-phone], .tt, .hot')) return;
+  if (e.pointerType === 'mouse' || e.target.closest('input, a, [data-phone], .hot')) return;
   swipe = { x: e.clientX, y: e.clientY, t: Date.now() };
 });
 frame.addEventListener('pointercancel', () => { swipe = null; });

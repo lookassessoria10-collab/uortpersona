@@ -1,7 +1,7 @@
 // POST /api/vote — registra (ou substitui) a resposta de um participante.
-// Corpo: { session, pid, qid, value, name?, role? }
+// Corpo: { session, pid, qid, value, name? }
 // Cada aparelho tem um identificador (pid): se a pessoa mudar de ideia, a resposta nova substitui a anterior.
-import { byId, normalize, ROLES } from '../js/config.js';
+import { byId, normalize } from '../js/config.js';
 import { exec, K } from '../lib/store.js';
 import { handler, send, readBody, cleanSession, cleanText } from '../lib/http.js';
 
@@ -24,11 +24,10 @@ export default handler(async (req, res) => {
   if (v === undefined) return send(res, 400, { error: 'Resposta inválida para esta pergunta.' });
 
   const ts = Date.now();
-  const role = ROLES.some(r => r.id === b.role) ? b.role : '';
   await exec([
     ['SADD', K.sessions, session],
     ['HSET', K.answers(session, q.id), pid, JSON.stringify({ v, ts })],
-    ['HSET', K.people(session), pid, JSON.stringify({ name: cleanText(b.name, 60), role, ts })],
+    ['HSET', K.people(session), pid, JSON.stringify({ name: cleanText(b.name, 60), ts })],
   ]);
   send(res, 200, { ok: true, session });
 });
