@@ -6,7 +6,7 @@
    No computador: palco 16:9 escalado. No celular/tablet em pé: layout
    vertical que rola (classe .fluid no <html>).
    ========================================================================== */
-import { QUESTIONS, SETTINGS, byId, normalize, answerLabel } from './config.js';
+import { QUESTIONS, SETTINGS, byId, normalize, answerLabel, applies } from './config.js';
 import { injectIcons, icon } from './icons.js';
 import { api, LS, participantId, flushQueue } from './client.js';
 
@@ -33,7 +33,7 @@ const reduced = staticMode || matchMedia('(prefers-reduced-motion: reduce)').mat
 
 const SESSION = cleanSession(params.get('sessao') || SETTINGS.defaultSession);
 const PID = participantId();
-const CHAPTERS = { chegada: 'Chegada', dna: 'O DNA', revelacao: 'Revelação', ela: 'Ela', ele: 'Ele', presenca: 'Presença', fechamento: 'Fechamento' };
+const CHAPTERS = { chegada: 'Chegada', dna: 'O DNA', revelacao: 'Revelação', ela: 'Proposta A', ele: 'Proposta B', escolha: 'A escolha', presenca: 'Presença', fechamento: 'Fechamento' };
 
 const stage = $('#stage');
 const frame = $('#frame');
@@ -57,6 +57,13 @@ const saveLocal = () => LS.set('maia-local', state.local);
 const sentKey = qid => `${SESSION}:${qid}`;
 const valueArray = v => (v == null ? [] : Array.isArray(v) ? v : [v]);
 const answered = qid => normalize(byId(qid), state.local[qid]) !== undefined;
+// só uma proposta segue: perguntas e lâminas com "when" dependem da escolha (data-when="personagem:ela")
+const applicable = q => applies(q, state.local);
+const activeQs = () => QUESTIONS.filter(applicable);
+const isOn = slide => { const w = slide.dataset.when; if (!w) return true; const [k, v] = w.split(':'); return state.local[k] === v; };
+const visible = () => slides.filter(isOn);
+/** Próxima lâmina visível a partir de n, andando para frente (dir 1) ou para trás (dir -1). */
+function nextOn(n, dir = 1) { for (let k = n; k >= 0 && k < slides.length; k += dir) if (isOn(slides[k])) return k; return -1; }
 
 /* ---------------------------------------------------------------- toast */
 let toastTimer;
@@ -77,11 +84,11 @@ const DECO = {
   d1: '<path class="dr" d="M1920 0v560c-180-40-310-150-380-320C1500 140 1420 50 1320 0Z" fill="url(#g-dark)"/><path class="dash" d="M-40 900c280-40 470-200 560-440S800 60 1060 -30" fill="none" stroke="#35e8f2" stroke-opacity=".38" stroke-width="1.6" stroke-dasharray="3 10"/><path d="M1340 1100c40-200 170-330 360-380 110-30 190-90 240-170" fill="none" stroke="url(#g-line)" stroke-width="1.6" opacity=".7"/>',
   d2: '<path class="dl" d="M0 1080V520c180 40 320 150 390 320 40 100 110 180 190 240Z" fill="url(#g-dark)"/><path class="dash" d="M1960 140c-280 40-470 200-560 440s-240 400-500 520" fill="none" stroke="#35e8f2" stroke-opacity=".38" stroke-width="1.6" stroke-dasharray="3 10"/>',
 };
-slides.forEach((s, k) => {
+slides.forEach(s => {
   const d = DECO[s.dataset.deco];
   if (d) s.insertAdjacentHTML('afterbegin', `<svg class="deco" viewBox="0 0 1920 1080" preserveAspectRatio="none" aria-hidden="true">${d}</svg>`);
   const foot = $('.sl-foot', s);
-  if (foot) foot.insertAdjacentHTML('beforeend', `<span class="pg">${pad(k + 1)} / ${pad(slides.length)}</span>`);
+  if (foot) foot.insertAdjacentHTML('beforeend', '<span class="pg"></span>'); // preenchido em layout()
   $$('img', s).forEach(img => { img.decoding = 'async'; });
 });
 // pré-carrega as imagens das próximas lâminas (as demais chegam sob demanda)
@@ -89,7 +96,31 @@ function warm(k) {
   [k + 1, k + 2].forEach(n => slides[n] && $$('img', slides[n]).forEach(img => {
     if (!img.complete && !img.dataset.warm) { img.dataset.warm = '1'; new Image().src = img.currentSrc || img.src; }
   }));
+  [k + 1, k + 2].forEach(n => slides[n] && primeVideos(slides[n]));
 }
+
+/* vídeos: só baixam perto da lâmina; sem animação ou com economia de dados, fica a capa (poster) */
+const noVideo = reduced || navigator.connection?.saveData;
+function primeVideos(slide) {
+  if (noVideo) return;
+  $$('video[data-video]', slide).forEach(v => {
+    if (v.dataset.ready) return;
+    v.dataset.ready = '1';
+    $$('source[data-src]', v).forEach(src => { src.src = src.dataset.src; });
+    v.preload = 'auto';
+    v.load();
+  });
+}
+function playVideos(slide) {
+  primeVideos(slide);
+  if (noVideo) return;
+  // ainda carregando ou aba em segundo plano: tenta de novo quando der; enquanto isso, a capa continua visível
+  $$('video[data-video]', slide).forEach(v => v.play().catch(() => v.addEventListener('canplay', () => {
+    if (slide.classList.contains('is-active')) v.play().catch(() => {});
+  }, { once: true })));
+}
+const pauseVideos = slide => $$('video[data-video]', slide).forEach(v => v.pause());
+document.addEventListener('visibilitychange', () => { if (!document.hidden && slides[state.i]) playVideos(slides[state.i]); });
 
 /* ======================================================================
    OPÇÕES DAS PERGUNTAS (geradas a partir de config.js)
@@ -109,13 +140,20 @@ const nameCards = q => q.options.map((o, k) => `
     </button>`).join('');
 
 const RENDER = {
+  personagem: q => q.options.map(o => `
+    <button class="pick opt" data-v="${o.id}" aria-pressed="false">
+      <span class="pick-img"><img src="${o.img}" alt="" style="--pos:${o.pos || '50% 15%'}" ${lazy}></span>
+      <span class="pick-tx"><span class="pick-k">${o.tag}</span><b class="pick-name">${o.label}</b><span class="pick-d">${o.desc}</span><span class="pick-cta">Escolher<span class="pick-more"> esta proposta</span></span></span>${CHECK}
+    </button>`).join(''),
   dna: q => q.options.map(o => `
     <button class="trait opt" data-v="${o.id}" aria-pressed="false"><span class="tr-mark">${icon('plus')}</span>${o.label}</button>`).join(''),
   'nome-ela': nameCards,
   'nome-ele': nameCards,
+  // só a proposta escolhida (as duas, uma sobre a outra, se a pessoa ainda não escolheu)
   versao: q => q.options.map(o => `
     <button class="ver opt" data-v="${o.id}" aria-pressed="false">
-      <span class="ver-imgs"><img src="${o.img}" alt="" style="--pos:${o.pos || '50% 20%'}" ${lazy}><img src="${o.img2}" alt="" style="--pos:${o.pos2 || '50% 20%'}" ${lazy}></span><span class="ver-shade"></span>
+      <span class="ver-imgs">${[state.local.personagem !== 'ele' && [o.img, o.pos], state.local.personagem !== 'ela' && [o.img2, o.pos2]].filter(Boolean)
+        .map(([src, p]) => `<img src="${src}" alt="" style="--pos:${p || '50% 20%'}" ${lazy}>`).join('')}</span><span class="ver-shade"></span>
       <span class="ver-txt"><b>${o.label}</b><span>${o.desc}</span></span>${CHECK}
     </button>`).join(''),
   cabelo: q => q.options.map(o => `
@@ -140,10 +178,12 @@ const RENDER = {
 };
 
 const qSlides = slides.filter(s => s.dataset.q);
-qSlides.forEach(slide => {
+function renderOpts(slide) {
   const q = byId(slide.dataset.q);
   $('[data-opts]', slide).innerHTML = RENDER[q.id](q);
-});
+  if (q.id === 'versao') $('[data-opts]', slide).classList.toggle('solo', !!state.local.personagem);
+}
+qSlides.forEach(renderOpts);
 
 /* ---------- seleção ---------- */
 function paintSelection(slide) {
@@ -173,6 +213,7 @@ function feedback(slide, animate) {
 
 function choose(slide, v) {
   const q = byId(slide.dataset.q);
+  const before = state.local[q.id];
   if (q.type === 'single') {
     state.local[q.id] = v;
   } else {
@@ -192,6 +233,17 @@ function choose(slide, v) {
   paintSelection(slide);
   feedback(slide, true);
   save(q.id);
+  if (q.id === 'personagem' && before !== v) changedPersonagem();
+}
+
+/* trocou de proposta: apaga as respostas que só valiam para a outra e refaz a sequência */
+function changedPersonagem() {
+  QUESTIONS.forEach(x => { if (!applicable(x) && x.id in state.local) { delete state.local[x.id]; save(x.id); } });
+  saveLocal();
+  state.returnTo = null; // segue para o nome da proposta escolhida, mesmo vindo do resumo
+  renderOpts($('.slide[data-id="versoes"]'));
+  paintSelection($('.slide[data-id="versoes"]'));
+  layout();
 }
 
 stage.addEventListener('click', e => {
@@ -245,8 +297,8 @@ const saveTimers = {};
 function save(qid, force) {
   const q = byId(qid);
   const v = normalize(q, state.local[qid]);
-  // pergunta de múltipla escolha esvaziada: apaga a resposta anterior no servidor
-  const value = v === undefined ? (q.type === 'multi' && state.sent[sentKey(qid)] ? null : undefined) : v;
+  // resposta apagada (desmarcou tudo ou trocou de proposta): apaga também no servidor
+  const value = v === undefined ? (state.sent[sentKey(qid)] ? null : undefined) : v;
   clearTimeout(saveTimers[qid]);
   if (value === undefined) { updateNav(); return; }
   if (!force && state.sent[sentKey(qid)] === JSON.stringify(value)) { state.status[qid] = 'saved'; updateNav(); return; }
@@ -294,7 +346,7 @@ function renderPauseRecap(slide) {
 }
 
 /* ======================================================================
-   LÂMINAS 07 E 10 · PONTOS DE DETALHE
+   LÂMINAS 07 E 08 · PONTOS DE DETALHE
    ====================================================================== */
 const HOTS = {
   cabelo: ['maia/det-cabelo', 'Cabelo crespo natural', 'Volume, textura e liberdade de penteado.'],
@@ -336,7 +388,7 @@ $$('.s-who').forEach(function setupHotspots(slide) {
 });
 
 /* ======================================================================
-   LÂMINA 15 · COMO VIRA CONTEÚDO
+   LÂMINA 16 · COMO VIRA CONTEÚDO
    ====================================================================== */
 // who: quem faz a pergunta no post (ela | ele)
 const THEMES = [
@@ -414,29 +466,30 @@ function ctStart() {
 function ctStop() { clearInterval(ct.timer); ct.timer = null; }
 
 /* ======================================================================
-   LÂMINA 17 · SUAS ESCOLHAS
+   LÂMINA 18 · SUAS ESCOLHAS
    ====================================================================== */
 function renderRecap(slide) {
-  const done = QUESTIONS.filter(q => answered(q.id));
+  const qs = activeQs();
+  const done = qs.filter(q => answered(q.id));
   const pending = done.filter(q => state.status[q.id] === 'saving' || state.status[q.id] === 'queued' || state.sent[sentKey(q.id)] !== JSON.stringify(normalize(q, state.local[q.id])));
   const st = $('[data-rc-status]', slide);
-  if (done.length === QUESTIONS.length && !pending.length) {
+  if (done.length === qs.length && !pending.length) {
     st.className = 'rc-status ok';
-    st.innerHTML = `${icon('check')}<span><b>Suas ${QUESTIONS.length} escolhas foram registradas.</b> Obrigado! Se quiser, ainda dá para alterar.</span>`;
-  } else if (pending.length && done.length === QUESTIONS.length) {
+    st.innerHTML = `${icon('check')}<span><b>Suas ${qs.length} escolhas foram registradas.</b> Obrigado! Se quiser, ainda dá para alterar.</span>`;
+  } else if (pending.length && done.length === qs.length) {
     st.className = 'rc-status wait';
     st.innerHTML = `${icon('refresh')}<span><b>Enviando suas respostas…</b> Se estiver sem internet, elas são enviadas assim que a conexão voltar.</span>`;
   } else {
     st.className = 'rc-status miss';
-    st.innerHTML = `${icon('info')}<span>Você respondeu <b>${done.length} de ${QUESTIONS.length}</b>. Toque em <b>Responder</b> para completar as que faltam.</span>`;
+    st.innerHTML = `${icon('info')}<span>Você respondeu <b>${done.length} de ${qs.length}</b>. Toque em <b>Responder</b> para completar as que faltam.</span>`;
   }
-  $('[data-recap]', slide).innerHTML = QUESTIONS.map((q, k) => {
-    const has = answered(q.id), v = state.local[q.id];
+  $('[data-recap]', slide).innerHTML = qs.map((q, k) => {
+    const has = answered(q.id), v = state.local[q.id], who = state.local.personagem;
     const opt = q.type === 'single' && has ? q.options.find(o => o.id === v) : null;
-    const img = opt?.img ? `<span class="rc-img">${[[opt.img, opt.pos], [opt.img2, opt.pos2]].filter(([src]) => src)
+    const img = opt?.img ? `<span class="rc-img">${[who !== 'ele' && [opt.img, opt.pos], who !== 'ela' && [opt.img2, opt.pos2]].filter(x => x && x[0])
       .map(([src, p]) => `<img src="${src}" alt="" style="--pos:${p || '50% 22%'}" ${lazy}>`).join('')}</span>` : '';
     return `<article class="rc${has ? '' : ' empty'}${img ? ' has-img' : ''}" style="--i:${k}">
-      ${img}<p class="rc-k">${q.n} · ${q.short}</p>
+      ${img}<p class="rc-k">${pad(k + 1)} · ${q.short}</p>
       <p class="rc-v">${has ? esc(answerLabel(q, v)) : 'Ainda não respondida'}</p>
       <button class="rc-edit" data-jump="${q.slide}">${has ? 'Alterar' : 'Responder'}${icon('arrow-right')}</button>
     </article>`;
@@ -491,9 +544,11 @@ function enter(slide) {
   }
   slide._reset?.();
   if (slide.dataset.q) paintSelection(slide);
+  playVideos(slide);
 }
 function leave(slide) {
   if (slide.dataset.id === 'conteudo') ctStop();
+  pauseVideos(slide);
 }
 
 function activate(n, step) {
@@ -535,7 +590,9 @@ function render() {
   vt.finished.catch(() => {}).finally(() => { if (id === vtId) delete document.documentElement.dataset.vt; });
 }
 function go(n, step = 0) {
-  pos.i = Math.max(0, Math.min(slides.length - 1, n));
+  n = Math.max(0, Math.min(slides.length - 1, n));
+  if (!isOn(slides[n])) n = nextOn(n, 1) >= 0 ? nextOn(n, 1) : nextOn(n, -1);
+  pos.i = n;
   pos.step = Math.max(0, Math.min(maxStep(slides[pos.i]), step));
   render();
 }
@@ -547,33 +604,51 @@ function next() {
     toast('Antes de começar, digite o seu nome.');
     return;
   }
+  // a escolha da proposta é obrigatória: é ela que define qual votação de nome aparece
+  if (slide.dataset.id === 'personagem' && !answered('personagem')) {
+    const box = $('[data-opts]', slide);
+    box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+    toast('Escolha uma das propostas para continuar.');
+    return;
+  }
   if (pos.step < maxStep(slide)) { pos.step++; render(); return; }
   if (state.returnTo != null && slide.dataset.q) { const r = state.returnTo; state.returnTo = null; go(r); return; }
-  if (pos.i < slides.length - 1) go(pos.i + 1);
+  const k = nextOn(pos.i + 1, 1);
+  if (k >= 0) go(k);
 }
 function prev() {
-  if (pos.step > 0) { pos.step--; render(); }
-  else if (pos.i > 0) go(pos.i - 1, maxStep(slides[pos.i - 1]));
+  if (pos.step > 0) { pos.step--; render(); return; }
+  const k = nextOn(pos.i - 1, -1);
+  if (k >= 0) go(k, maxStep(slides[k]));
 }
 
 /* ---------- barra de progresso, sumário e moldura ---------- */
 const progress = $('#progress');
-progress.innerHTML = slides.map((s, k) => {
-  const chStart = k > 0 && s.dataset.chapter !== slides[k - 1].dataset.chapter;
-  return `<span class="seg${chStart ? ' ch-start' : ''}${s.dataset.q ? ' is-q' : ''}" data-go="${k}" title="${pad(k + 1)} · ${esc(s.dataset.title)}"></span>`;
-}).join('');
 progress.addEventListener('click', e => { const seg = e.target.closest('[data-go]'); if (seg && !state.fluid) go(Number(seg.dataset.go)); });
-$('#bb-n').textContent = pad(slides.length);
+
+/** Refaz numeração, rodapés e barra de progresso com as lâminas que valem para esta pessoa. */
+function layout() {
+  const vis = visible();
+  slides.forEach(s => { const pg = $('.sl-foot .pg', s); if (pg) pg.textContent = isOn(s) ? `${pad(vis.indexOf(s) + 1)} / ${pad(vis.length)}` : ''; });
+  vis.filter(s => s.dataset.q).forEach((s, k) => $$('[data-qn]', s).forEach(el => { el.textContent = pad(k + 1); }));
+  progress.innerHTML = vis.map((s, k) => {
+    const chStart = k > 0 && s.dataset.chapter !== vis[k - 1].dataset.chapter;
+    return `<span class="seg${chStart ? ' ch-start' : ''}${s.dataset.q ? ' is-q' : ''}" data-go="${slides.indexOf(s)}" title="${pad(k + 1)} · ${esc(s.dataset.title)}"></span>`;
+  }).join('');
+  $('#bb-n').textContent = pad(vis.length);
+  if (state.i >= 0) updateChrome();
+}
 
 function buildToc() {
   let html = '', ch = null;
-  slides.forEach((s, k) => {
+  visible().forEach((s, j) => {
+    const k = slides.indexOf(s);
     if (s.dataset.chapter !== ch) { ch = s.dataset.chapter; html += `<p class="toc-ch">${CHAPTERS[ch]}</p>`; }
     const q = s.dataset.q;
     const tag = q ? (answered(q) ? `<span class="tag ok">${icon('check')}Respondida</span>` : '<span class="tag">Escolha</span>') : '';
     // antes da revelação, o sumário não entrega o nome
     const title = state.i < revealIndex && k >= revealIndex ? 'Continua…' : s.dataset.title;
-    html += `<button class="toc-item${k === state.i ? ' cur' : ''}" data-go="${k}"><b>${pad(k + 1)}</b>${esc(title)}${tag}</button>`;
+    html += `<button class="toc-item${k === state.i ? ' cur' : ''}" data-go="${k}"><b>${pad(j + 1)}</b>${esc(title)}${tag}</button>`;
   });
   $('#toc-list').innerHTML = html;
 }
@@ -589,16 +664,18 @@ function updateChrome() {
   const s = slides[state.i];
   $('#tb-num').textContent = pad(chapterOrder.indexOf(s.dataset.chapter) + 1);
   $('#tb-title').textContent = CHAPTERS[s.dataset.chapter];
-  $('#tb-count').textContent = `${pad(state.i + 1)}/${pad(slides.length)}`;
-  $('#bb-i').textContent = pad(state.i + 1);
+  const vis = visible(), at = vis.indexOf(s) + 1;
+  $('#tb-count').textContent = `${pad(at)}/${pad(vis.length)}`;
+  $('#bb-i').textContent = pad(at);
   $('#bb-title').textContent = s.dataset.title;
-  $$('.seg', progress).forEach((seg, k) => {
+  $$('.seg', progress).forEach(seg => {
+    const k = Number(seg.dataset.go);
     seg.classList.toggle('done', k < state.i);
     seg.classList.toggle('cur', k === state.i);
     if (slides[k].dataset.q) seg.classList.toggle('ans', answered(slides[k].dataset.q));
   });
   $$('[data-act="prev"]').forEach(b => { b.disabled = state.i === 0 && state.step === 0; });
-  document.title = state.i >= revealIndex ? 'Personagens · UORT' : 'UORT · Novos integrantes';
+  document.title = state.i >= revealIndex ? 'Personagem · UORT' : 'UORT · Personagem da marca';
   updateNav();
 }
 
@@ -607,12 +684,12 @@ function updateNav() {
   const s = slides[state.i];
   if (!s) return;
   const q = s.dataset.q ? byId(s.dataset.q) : null;
-  const last = state.i === slides.length - 1 && state.step >= maxStep(s);
+  const last = nextOn(state.i + 1, 1) < 0 && state.step >= maxStep(s);
   const btn = $('#btn-next'), label = $('#next-label'), info = $('#bb-save');
   let text = 'Próxima', ghost = false;
   if (s.dataset.id === 'perfil') { text = state.me.name ? 'Começar' : 'Continuar'; ghost = !state.me.name; }
   else if (q) {
-    if (!answered(q.id)) { text = 'Pular'; ghost = true; }
+    if (!answered(q.id)) { text = q.id === 'personagem' ? 'Continuar' : 'Pular'; ghost = true; }
     else if (state.returnTo != null) text = 'Voltar ao resumo';
   } else if (s.dataset.id === 'pausa' && state.step < maxStep(s)) text = 'Continuar';
   else if (s.dataset.id === 'recap') text = 'Finalizar';
@@ -701,7 +778,7 @@ addEventListener('keydown', e => {
     case 'ArrowLeft': case 'PageUp': e.preventDefault(); prev(); break;
     case 'ArrowDown': case 'ArrowUp': if (!state.fluid) { e.preventDefault(); (k === 'ArrowDown' ? next : prev)(); } break;
     case 'Home': e.preventDefault(); go(0); break;
-    case 'End': e.preventDefault(); go(slides.length - 1); break;
+    case 'End': e.preventDefault(); go(nextOn(slides.length - 1, -1)); break;
     case 'f': case 'F': if (!state.fluid) toggleFull(); break;
     case 's': case 'S': ACTIONS.toc(); break;
     case 'Escape': if (document.body.classList.contains('is-full') && !document.fullscreenElement) { document.body.classList.remove('is-full'); fit(); } break;
@@ -732,6 +809,7 @@ addEventListener('online', () => flushQueue().then(() => QUESTIONS.forEach(q => 
    INÍCIO
    ====================================================================== */
 applyMode();
+layout();
 const fromHash = parseInt(location.hash.slice(1), 10) - 1;
 const resume = LS.get('maia-pos', 0);
 if (Number.isFinite(fromHash) && fromHash >= 0) go(fromHash);

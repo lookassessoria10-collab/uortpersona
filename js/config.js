@@ -8,11 +8,11 @@ export const SETTINGS = {
   // Nome da rodada em que as respostas são agrupadas no painel.
   // Para separar rodadas (ex.: sócios e colaboradores), envie o link com ?sessao=nome
   defaultSession: 'principal',
-  // A partir desta lâmina os personagens são revelados
+  // A partir desta lâmina as duas propostas de personagem são reveladas
   revealSlide: 'revelacao',
   // Mudou o questionário? Aumente o número: os aparelhos que já abriram a versão
   // anterior começam do zero (respostas e posição guardadas no navegador).
-  version: 2,
+  version: 3,
 };
 
 const MAIA = 'assets/maia/';
@@ -22,7 +22,7 @@ export const QUESTIONS = [
   {
     id: 'dna', n: '01', type: 'multi', max: 3, slide: 'dna',
     short: 'DNA da personalidade',
-    title: 'Escolha 3 características que não podem faltar nos personagens.',
+    title: 'Escolha 3 características que não podem faltar no personagem.',
     options: [
       { id: 'proximidade', label: 'Proximidade' },
       { id: 'inteligencia', label: 'Inteligência' },
@@ -39,8 +39,21 @@ export const QUESTIONS = [
     ],
   },
   {
+    // Só uma das propostas vai seguir. Obrigatória: decide quais perguntas aparecem depois.
+    id: 'personagem', n: '02', type: 'single', slide: 'personagem',
+    short: 'Proposta escolhida',
+    title: 'Qual proposta deve representar a UORT?',
+    options: [
+      { id: 'ela', label: 'Ela', tag: 'Proposta A', img: MAIA + 'hero-blazer.webp', pos: '50% 12%',
+        desc: 'Mulher negra, brasileira, de Salvador. Comunicativa, atenta, próxima e acolhedora.' },
+      { id: 'ele', label: 'Ele', tag: 'Proposta B', img: OTTO + 'hero.webp', pos: '62% 10%',
+        desc: 'Presença masculina, esportiva e acessível. Comunicativo, atento, próximo e carismático.' },
+    ],
+  },
+  {
+    // when: a pergunta só aparece para quem escolheu essa proposta
     // rows: [marca, título, detalhe] — a marca é uma letra (acróstico) ou um ícone
-    id: 'nome-ela', n: '02', type: 'single', slide: 'nome-ela',
+    id: 'nome-ela', n: '03', type: 'single', slide: 'nome-ela', when: { personagem: 'ela' },
     short: 'Nome dela',
     title: 'Qual nome combina mais com ela?',
     options: [
@@ -61,7 +74,7 @@ export const QUESTIONS = [
     ],
   },
   {
-    id: 'cabelo', n: '03', type: 'single', slide: 'cabelo',
+    id: 'cabelo', n: '04', type: 'single', slide: 'cabelo', when: { personagem: 'ela' },
     short: 'Cabelo e expressão',
     title: 'Qual delas parece mais com ela chegando para trabalhar hoje?',
     options: [
@@ -74,29 +87,30 @@ export const QUESTIONS = [
     ],
   },
   {
-    id: 'nome-ele', n: '04', type: 'single', slide: 'nome-ele',
+    id: 'nome-ele', n: '05', type: 'single', slide: 'nome-ele', when: { personagem: 'ele' },
     short: 'Nome dele',
     title: 'Qual nome combina mais com ele?',
     options: [
       { id: 'otto', label: 'Otto', idea: 'Um nome que vai e volta, como o movimento.',
         rows: [
+          ['cross', 'Lembra Ortopedia', 'Otto soa como “orto”: a especialidade da UORT no próprio nome'],
           ['refresh', 'Ida e volta', 'Otto se lê igual de trás para frente'],
           ['star', 'Curto e marcante', 'quatro letras, fácil de falar e de lembrar'],
           ['sparkle', 'Atual e próximo', 'soa moderno sem perder a simpatia'],
         ] },
-      { id: 'marcos', label: 'Marcos', idea: 'Na recuperação, cada passo é um marco.',
+      { id: 'marco', label: 'Marco', idea: 'Na recuperação, cada passo é um marco.',
         rows: [
-          ['route', 'Cada avanço conta', 'soa como “marco”, o ponto que sinaliza o caminho'],
+          ['route', 'Cada avanço conta', 'marco é o ponto que sinaliza cada etapa do caminho'],
           ['shield', 'Clássico e confiável', 'um nome conhecido, que transmite segurança'],
           ['users', 'Gente como a gente', 'parece alguém da família, do trabalho, do bairro'],
         ] },
     ],
   },
   {
-    // img/img2: os dois personagens na mesma versão (ela em cima, ele embaixo)
-    id: 'versao', n: '05', type: 'single', slide: 'versoes',
+    // img: ela · img2: ele — mostra a proposta escolhida (as duas, se ainda não escolheu)
+    id: 'versao', n: '06', type: 'single', slide: 'versoes',
     short: 'Versão mais frequente',
-    title: 'Em qual versão você imagina os personagens aparecendo com mais frequência?',
+    title: 'Em qual versão você imagina o personagem aparecendo com mais frequência?',
     options: [
       { id: 'profissional', label: 'Profissional', desc: 'Blazer e jaqueta, presença confiante.',
         img: MAIA + 'hero-blazer.webp', pos: '50% 12%', img2: OTTO + 'e-polido.webp', pos2: '50% 12%' },
@@ -109,9 +123,9 @@ export const QUESTIONS = [
     ],
   },
   {
-    id: 'canais', n: '06', type: 'multi', max: 2, slide: 'canais',
+    id: 'canais', n: '07', type: 'multi', max: 2, slide: 'canais',
     short: 'Onde aparecer primeiro',
-    title: 'Onde você gostaria de encontrar os personagens primeiro?',
+    title: 'Onde você gostaria de encontrar o personagem primeiro?',
     options: [
       { id: 'feed', label: 'Feed', icon: 'image' },
       { id: 'stories', label: 'Stories', icon: 'stories' },
@@ -126,9 +140,9 @@ export const QUESTIONS = [
     ],
   },
   {
-    id: 'conversa', n: '07', type: 'multi', max: 2, slide: 'conversa',
+    id: 'conversa', n: '08', type: 'multi', max: 2, slide: 'conversa',
     short: 'Tipo de conversa',
-    title: 'Que tipo de conversa os personagens deveriam puxar mais?',
+    title: 'Que tipo de conversa o personagem deveria puxar mais?',
     options: [
       { id: 'quando', label: 'Quando procurar atendimento', desc: 'Sinais de que vale ir ao Pronto Atendimento ou a um especialista.', icon: 'cross' },
       { id: 'mitos', label: 'Mitos e verdades', desc: 'Gelo ou calor? Estalar o joelho faz mal?', icon: 'question' },
@@ -139,9 +153,9 @@ export const QUESTIONS = [
     ],
   },
   {
-    id: 'primeiro', n: '08', type: 'single', slide: 'primeiro',
+    id: 'primeiro', n: '09', type: 'single', slide: 'primeiro',
     short: 'Primeiro conteúdo',
-    title: 'Qual deveria ser o primeiro conteúdo dos personagens?',
+    title: 'Qual deveria ser o primeiro conteúdo do personagem?',
     options: [
       { id: 'caiu', label: 'Caiu no fim de semana. E agora?', img: OTTO + 'p-atento.webp', pos: '50% 25%' },
       { id: 'joelho', label: 'Seu joelho reclama ao subir escadas?', img: MAIA + 'sit-esporte.webp', pos: '50% 18%' },
@@ -152,6 +166,9 @@ export const QUESTIONS = [
 ];
 
 export const byId = id => QUESTIONS.find(q => q.id === id);
+
+/** A pergunta vale para quem deu estas respostas? (perguntas com when dependem de outra resposta) */
+export const applies = (q, answers) => !q.when || Object.entries(q.when).every(([k, v]) => answers?.[k] === v);
 
 /** Valida e normaliza uma resposta. Retorna undefined se for inválida. */
 export function normalize(q, value) {

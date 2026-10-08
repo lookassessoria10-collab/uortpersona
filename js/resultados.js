@@ -3,7 +3,7 @@
    Lê /api/results (exige a chave PRESENTER_KEY), agrega no navegador,
    filtra por rodada e exporta CSV (abre direto no Excel).
    ========================================================================== */
-import { QUESTIONS, byId, aggregate, answerLabel } from './config.js';
+import { QUESTIONS, byId, aggregate, answerLabel, applies } from './config.js';
 import { injectIcons, icon } from './icons.js';
 import { api, LS, presenterKey } from './client.js';
 
@@ -99,21 +99,22 @@ function render() {
 
   // indicadores
   const ids = new Set(rows.map(idOf));
+  // respondeu tudo = todas as perguntas do caminho dessa pessoa (as de "when" dependem da proposta escolhida)
   const perPerson = {};
-  rows.forEach(r => { (perPerson[idOf(r)] ||= new Set()).add(r.qid); });
-  const complete = Object.values(perPerson).filter(s => s.size === QUESTIONS.length).length;
+  rows.forEach(r => { (perPerson[idOf(r)] ||= {})[r.qid] = r.v; });
+  const complete = Object.values(perPerson).filter(ans => QUESTIONS.every(q => !applies(q, ans) || q.id in ans)).length;
   const last = rows.reduce((m, r) => Math.max(m, r.ts || 0), 0);
   $('#kpis').innerHTML = `
     <div class="kpi hero"><span>Participantes</span><b>${fmt(ids.size)}</b><small>${last ? 'última resposta ' + new Date(last).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'nenhuma resposta ainda'}</small></div>
     <div class="kpi"><span>Responderam tudo</span><b>${fmt(complete)}</b><small>${pct(complete, ids.size)}% dos participantes</small></div>
-    <div class="kpi"><span>Pararam no meio</span><b>${fmt(ids.size - complete)}</b><small>responderam parte das ${QUESTIONS.length} escolhas</small></div>
-    ${['nome-ela', 'nome-ele'].map(id => nameKpi(byId(id), rows.filter(r => r.qid === id))).join('')}`;
+    <div class="kpi"><span>Pararam no meio</span><b>${fmt(ids.size - complete)}</b><small>responderam só parte das escolhas</small></div>
+    ${['personagem', 'nome-ela', 'nome-ele'].map(id => nameKpi(byId(id), rows.filter(r => r.qid === id))).join('')}`;
 
   $('#charts').innerHTML = QUESTIONS.map(q => chartCard(q, rows.filter(r => r.qid === q.id))).join('');
   renderTable();
 }
 
-// placar dos nomes: o mais votado de cada personagem
+// placar da proposta escolhida e dos nomes: a opção mais votada de cada um
 function nameKpi(q, answers) {
   const a = aggregate(q, answers);
   const [first, second] = q.options.map(o => ({ o, c: a.counts[o.id] })).sort((x, y) => y.c - x.c);
@@ -124,7 +125,9 @@ function nameKpi(q, answers) {
 
 function chartCard(q, answers) {
   const a = aggregate(q, answers);
-  const head = `<div class="qcard-h"><div><small>${q.n} · ${q.short}</small><h3>${esc(q.title)}</h3></div><span class="n">${fmt(a.n)} ${a.n === 1 ? 'resposta' : 'respostas'}</span></div>`;
+  const who = q.when?.personagem && byId('personagem').options.find(o => o.id === q.when.personagem)?.label.toLowerCase();
+  const only = who ? `<p class="qcard-sub">Só para quem escolheu a proposta "${who}".</p>` : '';
+  const head = `<div class="qcard-h"><div><small>${q.n} · ${q.short}</small><h3>${esc(q.title)}</h3></div><span class="n">${fmt(a.n)} ${a.n === 1 ? 'resposta' : 'respostas'}</span></div>${only}`;
   if (!a.n) return `<article class="qcard">${head}<p class="empty">Ainda sem respostas.</p></article>`;
 
   const sorted = q.options.map(o => ({ o, c: a.counts[o.id] })).sort((x, y) => y.c - x.c);
