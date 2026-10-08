@@ -58,7 +58,8 @@ As demais vêm de quadros pequenos das pranchas e só aparecem em tamanhos menor
 
 O original (1920×1080, ~5,3 MB, com áudio) foi recodificado quadro a quadro para ficar leve sem perder qualidade
 visível. O vídeo só é baixado quando a pessoa está a duas lâminas da revelação, toca sem som e em loop, e não
-carrega com `?estatico`, com "reduzir movimento" ativado no aparelho ou no modo de economia de dados (fica a capa).
+carrega com `?estatico` (fica a capa). Se o navegador bloquear a reprodução automática (ex.: iPhone em economia de
+bateria), aparece um botão de play sobre o vídeo, e qualquer toque na tela já o libera.
 
 Para trocar o vídeo, mantenha os mesmos nomes de arquivo, de preferência em 16:9, curto (até ~6 s), sem áudio,
 em 1280×720 e com até ~1,5 MB. A capa deve ser o primeiro quadro do vídeo, para a troca capa → vídeo não aparecer.

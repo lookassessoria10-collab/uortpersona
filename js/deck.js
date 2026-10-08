@@ -99,8 +99,8 @@ function warm(k) {
   [k + 1, k + 2].forEach(n => slides[n] && primeVideos(slides[n]));
 }
 
-/* vídeos: só baixam perto da lâmina; sem animação ou com economia de dados, fica a capa (poster) */
-const noVideo = reduced || navigator.connection?.saveData;
+/* vídeos: só baixam perto da lâmina; no modo ?estatico fica a capa (poster) */
+const noVideo = staticMode;
 function primeVideos(slide) {
   if (noVideo) return;
   $$('video[data-video]', slide).forEach(v => {
@@ -111,16 +111,26 @@ function primeVideos(slide) {
     v.load();
   });
 }
+function tryPlay(v, slide) {
+  const fig = v.closest('figure');
+  v.play().then(() => fig?.classList.remove('needs-tap')).catch(err => {
+    // reprodução automática bloqueada (ex.: iPhone em economia de bateria): mostra o botão de play
+    if (err?.name === 'NotAllowedError') fig?.classList.add('needs-tap');
+    // ainda carregando: tenta de novo quando der (até lá, a capa continua visível)
+    else v.addEventListener('canplay', () => { if (slide.classList.contains('is-active')) tryPlay(v, slide); }, { once: true });
+  });
+}
 function playVideos(slide) {
   primeVideos(slide);
-  if (noVideo) return;
-  // ainda carregando ou aba em segundo plano: tenta de novo quando der; enquanto isso, a capa continua visível
-  $$('video[data-video]', slide).forEach(v => v.play().catch(() => v.addEventListener('canplay', () => {
-    if (slide.classList.contains('is-active')) v.play().catch(() => {});
-  }, { once: true })));
+  if (!noVideo) $$('video[data-video]', slide).forEach(v => tryPlay(v, slide));
 }
 const pauseVideos = slide => $$('video[data-video]', slide).forEach(v => v.pause());
 document.addEventListener('visibilitychange', () => { if (!document.hidden && slides[state.i]) playVideos(slides[state.i]); });
+// qualquer toque na tela libera o vídeo da lâmina atual, se o navegador tiver bloqueado
+addEventListener('pointerdown', () => {
+  const s = slides[state.i];
+  if (s && !noVideo) $$('video[data-video]', s).forEach(v => { if (v.paused) tryPlay(v, s); });
+}, { passive: true });
 
 /* ======================================================================
    OPÇÕES DAS PERGUNTAS (geradas a partir de config.js)
