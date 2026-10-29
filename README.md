@@ -17,6 +17,7 @@ Só uma das propostas vai seguir:
 |---|---|---|
 | `/` | Quem recebe o link | Apresentação + questionário (celular e computador) |
 | `/resultados` | Equipe LOOK / UORT (com senha) | Placar da proposta e dos nomes, gráficos por pergunta, tabela e exportação CSV |
+| `/resultado` | Para mostrar à UORT | Resumo do resultado em 6 telas (quem ganhou, o nome, o DNA e a estreia). Números fixos no HTML, tirados do painel em 29/10/2026 |
 
 Site estático (HTML, CSS e JavaScript puros, sem build) + três funções serverless na Vercel para gravar as respostas.
 
@@ -136,16 +137,19 @@ e a senha do painel é `uort`. Para testar no celular na mesma rede Wi-Fi, use o
 | Pontos de detalhe (lâminas 07 e 08) | `js/deck.js` → `HOTS` |
 | Imagens dos personagens | `assets/maia/` (ela) e `assets/otto/` (ele) — veja `docs/IMAGENS.md` |
 | Vídeo da revelação (lâmina 06) | `assets/video/` — veja `docs/IMAGENS.md` |
+| Página do resultado: textos e números | `resultado.html` (visual em `css/resultado.css`) |
 
 ## Estrutura
 
 ```
 index.html           apresentação + questionário (19 lâminas; cada pessoa vê 17 ou 18)
 resultados.html      painel da equipe
-css/                 base.css · deck.css · resultados.css
+resultado.html       resumo do resultado (para apresentar)
+css/                 base.css · deck.css · resultados.css · resultado.css
 js/config.js         perguntas (fonte única)
 js/deck.js           apresentação, questionário e salvamento automático
 js/resultados.js     painel e exportação
+js/resultado.js      animações e navegação do resumo
 js/client.js         chamadas à API, identificação do aparelho, fila offline
 api/                 vote · results · status (funções da Vercel)
 lib/                 armazenamento (Upstash Redis / memória) e utilitários HTTP
